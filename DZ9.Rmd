@@ -1,0 +1,101 @@
+---
+
+title: "R Notebook"
+
+output:
+
+  html_document:
+
+    df_print: paged
+
+  html_notebook: default
+
+  pdf_document: default
+
+  word_document: default
+
+---
+Необходимо построить модель на основе SVM для переменной **`high.mpg`**
+Сначала создадим переменную **`high.mpg`** по правилу 
+high.mpg={
+Yes,
+No,
+если
+если
+mpg≥23,
+mpg<23.
+И построим график разброса наблюдений в пространств предикторов.
+ 
+```{r, warning = F, message = F}
+library('e1071')     # SVM
+library('ROCR')      # ROC-кривые
+library('ISLR')      # данные по экспрессии генов
+
+my.seed <- 2
+attach(Auto)
+
+high.mpg <- ifelse(Auto$mpg >= 23, "1", "0")
+df.1 <- Auto[,c(1,3,6)]
+str(df.1)
+Auto <- cbind(df.1, high.mpg)
+
+#График
+plot(Auto$acceleration, Auto$displacement, pch = 19, col = Auto$high.mpg)
+```
+Построим классификатор на опорных векторах
+```{r, warning = F, message = F}
+
+# классификатор на опорных векторах с линейной границей
+svmfit <- svm(high.mpg ~ acceleration + displacement, data = Auto, kernel = "linear", 
+              cost = 10, scale = FALSE)
+```
+Настроечным параметром этого классификатора является штрафной параметр, будем изменять его для улучшения модели.
+```{r, warning = F, message = F}
+set.seed(my.seed)
+tune.out <- tune(svm,high.mpg ~ acceleration + displacement, data = Auto, kernel = "linear",
+                 ranges = list(cost = c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
+summary(tune.out)
+
+# лучшая модель -- с минимальной ошибкой
+bestmod <- tune.out$best.model
+summary(bestmod)
+
+```
+Подгоним лучшую модель на обучающей выборке (50% наблюдений). И сделаем прогноз по лучшей модели на тестовой выборке, оценим его качество точность по матрице неточностей.
+```{r, warning = F, message = F}
+# тестовая выборка
+
+train <- sample(1:nrow(Auto), nrow(Auto)/2) # обучающая выборка -- 50%
+testdat <- Auto[-train,]
+traindat <- Auto[train,]
+
+#Подгоним на обучающей
+tune.out <- tune(svm, high.mpg ~ acceleration + displacement, data = traindat, kernel = "linear",
+                 ranges = list(cost = c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
+
+# лучшая модель -- с минимальной ошибкой
+bestmod <- tune.out$best.model
+
+ypred <- predict(bestmod, testdat)
+
+# матрица неточностей
+tbl <- table(predict = ypred, truth = testdat$high.mpg)
+
+acc.test <- sum(diag(tbl))/sum(tbl)
+
+acc.test
+```
+Точность прогноза достаточно высока это может быть объяснимо тем, что бОльшая часть наблюдений классов линейно разделима, построим теперь ROC-кривую.
+```{r, warning = F, message = F}
+# функция построения ROC-кривой: pred -- прогноз, truth -- факт
+rocplot <- function(pred, truth, ...){
+  predob = prediction(pred, truth)
+  perf = performance(predob, "tpr", "fpr")
+  plot(perf,...)}
+
+fitted <- attributes(predict(bestmod, testdat, 
+                             decision.values = T))$decision.values
+
+rocplot(fitted, testdat$high.mpg)
+```
+

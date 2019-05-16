@@ -1,0 +1,172 @@
+---
+
+title: "R Notebook"
+
+output:
+
+  html_document:
+
+    df_print: paged
+
+  html_notebook: default
+
+  pdf_document: default
+
+  word_document: default
+
+---
+Необходимо построить две модели для прогноза на основе дерева решений.
+Построим первую модель с дискретной зависимой переменной.
+ 
+```{r, warning = F, message = F}
+
+# Загрузка пакетов
+
+library('tree')              # деревья tree()
+
+library('ISLR')              # набор данных Carseats
+
+library('GGally')            # матричный график разброса ggpairs()
+
+library('MASS')              # набор данных Boston
+
+library('randomForest')      # случайный лес randomForest()
+
+library('gbm')               # бустинг gbm()
+
+my.seed <- 2
+
+high.medv <- ifelse(Boston$medv >= 25, "1", "0")
+
+Boston <- cbind(Boston, high.medv)
+
+# Для дискретной-----------------------------------
+
+# модель бинарного  дерева
+
+tree.boston <- tree(high.medv ~ . -medv, Boston)
+
+summary(tree.boston)
+
+
+# график результата
+
+plot(tree.boston)              # ветви
+
+text(tree.boston, pretty = 0)  # подписи
+
+tree.boston                   # посмотреть всё дерево в консоли
+```
+Теперь подгоним модель на обучающей выборке и посчитаем ошибку на тестовой.
+
+```{r, warning = F, message = F}
+# Подгонка на обучающей выборке-----------------
+
+# ядро генератора случайных чисел
+
+set.seed(my.seed)
+
+
+# обучающая выборка
+
+train <- sample(1:nrow(Boston), nrow(Boston)/2) # обучающая выборка -- 50%
+
+
+# тестовая выборка
+
+Boston.test <- Boston[-train,]
+
+high.medv.test <- high.medv[-train]
+
+# строим дерево на обучающей выборке для дискретной
+
+tree.boston <- tree(high.medv ~ . -medv, Boston, subset = train)
+#Оцениваем точность
+tree.pred <- predict(tree.boston, Boston.test, type = "class")
+
+mean(tree.pred!=Boston.test$high.medv)
+```
+
+Перестроим мдель с помощью бэггинга, его настроечные параметры это количество предикторов и количество деревьев. А так же пострим график прогноз-реализация.
+```{r, warning = F, message = F}
+####Для дискретной
+
+bag.boston <- randomForest(high.medv ~ ., data = Boston, subset = train,
+                           
+                           mtry = 13, ntree = 25)
+
+
+# Оцениваем точность ###########################################################
+
+
+
+# прогноз
+
+yhat.bag <- predict(bag.boston, newdata = Boston.test)
+str(yhat.bag)
+
+# MSE на тестовой
+
+mse.test <- mean(yhat.bag!=Boston.test$high.medv)
+head(Boston.test)
+names(mse.test)[length(mse.test)] <- 'Boston.bag.13.25'
+
+mse.test
+# график "прогноз -- реализация"
+
+plot(yhat.bag, Boston.test$high.medv)
+
+```
+Теперь проделаем всё то же самое для модели с непрерывной зависимой переменной.
+Сначала построим модель бинарного дерева.
+```{r, warning = F, message = F}
+# модель бинарного  дерева
+
+tree.boston1 <- tree(medv ~ . -high.medv, Boston)
+
+summary(tree.boston1)
+
+
+# график результата
+
+plot(tree.boston1)              # ветви
+
+text(tree.boston1, pretty = 0)  # подписи
+
+tree.boston1                  # посмотреть всё дерево в консоли
+# строим дерево на обучающей выборке для непрерывной
+tree.boston1 <- tree(medv ~ . -high.medv, Boston, subset = train)
+
+tree.pred1 <- predict(tree.boston1, Boston.test)
+
+mean((tree.pred1 - Boston.test$medv)^2)
+
+```
+Перестроим модель с помощью бэггинга
+```{r, warning = F, message = F}
+
+bag.boston <- randomForest(medv ~ ., data = Boston, subset = train,
+                           
+                           mtry = 13, ntree = 25)
+
+
+# Оцениваем точность ###########################################################
+
+
+
+# прогноз
+
+yhat.bag <- predict(bag.boston, newdata = Boston.test)
+
+str(yhat.bag)
+
+# MSE на тестовой
+
+mse.test <- mean((yhat.bag-Boston.test$medv)^2)
+
+names(mse.test)[length(mse.test)] <- 'Boston.bag.13.25'
+
+mse.test
+
+plot(yhat.bag, Boston.test$medv)
+```
